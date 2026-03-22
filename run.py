@@ -1,7 +1,10 @@
+from pyexpat import model
+
 from src.mixins.dataset_builder import DataProcessor
 from src.mixins.preprocessor import PreprocessorMixin
 from src.mixins.trainer import Trainer
-from models.baseline import Baseline
+from src.models.baseline import Baseline
+from src.models.lite_baseline import LiteBaseline
 import config
 from torch import nn
 import torch
@@ -9,14 +12,15 @@ import torch
 
 class ModelBuilder:
 
-    def __init__(self, preprocessor: PreprocessorMixin, data_processor: DataProcessor, trainer: Trainer):
-        self.model = Baseline(
-            n_classes=config.ModelConfig.n_classes,
-            embedding_dim=config.ModelConfig.embedding_dim,
-            base_channels=config.ModelConfig.base_channels,
-            use_speed=config.ModelConfig.use_speed,
-            dropout=config.ModelConfig.dropout,
-        )
+    def __init__(
+        self,
+        preprocessor: PreprocessorMixin,
+        data_processor: DataProcessor,
+        trainer: Trainer,
+        model: nn.Module,
+        model_config: dict,
+    ):
+        self.model = model(**model_config)
         self.preprocessor = preprocessor()
         self.data_processor = data_processor()
 
@@ -50,9 +54,19 @@ class ModelBuilder:
 
 
 if __name__ == "__main__":
+    model_config = {
+        "out_channels": 32,
+        "kernel_size": 5,
+        "use_norm": True,
+        "num_groups": 4,
+        "dropout": 0.2,
+    }
+
     model_builder = ModelBuilder(
         preprocessor=PreprocessorMixin,
         data_processor=DataProcessor,
         trainer=Trainer,
+        model=LiteBaseline,
+        model_config=model_config,
     )
     model_builder.build()
