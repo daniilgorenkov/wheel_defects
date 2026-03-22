@@ -1,7 +1,7 @@
 from src.mixins.dataset_builder import DataProcessor
 from src.mixins.preprocessor import PreprocessorMixin
 from src.mixins.trainer import Trainer
-from src.models.head_encoder import WheelBaseline
+from models.baseline import Baseline
 import config
 from torch import nn
 import torch
@@ -10,7 +10,7 @@ import torch
 class ModelBuilder:
 
     def __init__(self, preprocessor: PreprocessorMixin, data_processor: DataProcessor, trainer: Trainer):
-        self.model = WheelBaseline(
+        self.model = Baseline(
             n_classes=config.ModelConfig.n_classes,
             embedding_dim=config.ModelConfig.embedding_dim,
             base_channels=config.ModelConfig.base_channels,

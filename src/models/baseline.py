@@ -71,7 +71,7 @@ class SignalEncoder(nn.Module):
         return x
 
 
-class WheelBaseline(nn.Module):
+class Baseline(nn.Module):
     def __init__(
         self,
         n_classes: int = 2,

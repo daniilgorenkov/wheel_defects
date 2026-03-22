@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 
 
 class TrainerConfig:
@@ -35,3 +36,13 @@ class ModelConfig:
     base_channels = 16
     use_speed = True
     dropout = 0.2
+
+
+class PreprocessorConfig:
+    USE_COLS: list = ["datatime", "accz", "spd"]
+    WHEEL_DIAMETER = 0.960  # м
+    CIRCUMFERENCE = np.pi * WHEEL_DIAMETER
+    GAP_RESET_SEC = 0.5
+    MIN_SPEED_KMH = 0.1
+    MIN_POINTS_PER_REV = 8
+    NORMALIZE_SIGNAL = False

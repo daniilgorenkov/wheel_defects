@@ -37,6 +37,8 @@ class Trainer:
         self.class_weights = class_weights
         self.criterion = None
         self.optimizer = None
+        self.best_train_metrics = {}
+        self.best_val_metrics = {}
 
         os.makedirs(TrainerConfig.save_dir, exist_ok=True)
         self.best_path = os.path.join(TrainerConfig.save_dir, TrainerConfig.save_best_name)
@@ -273,6 +275,8 @@ class Trainer:
             if self._is_better(current_score):
                 self.best_score = current_score
                 self.best_epoch = epoch
+                self.best_train_metrics = train_metrics.copy()
+                self.best_val_metrics = val_metrics.copy()
                 self._save_checkpoint(epoch, current_score)
                 epochs_without_improvement = 0
 
@@ -287,6 +291,10 @@ class Trainer:
                 break
 
         print(f"Best epoch: {self.best_epoch} | " f"best_{TrainerConfig.monitor_metric}={self.best_score:.4f}")
+
+        if self.best_epoch > 0:
+            self._log_metrics_to_clearml(self.best_train_metrics, stage="train_best", epoch=self.best_epoch)
+            self._log_metrics_to_clearml(self.best_val_metrics, stage="val_best", epoch=self.best_epoch)
 
         self.task.upload_artifact("best_model_path", artifact_object=self.best_path)
 
