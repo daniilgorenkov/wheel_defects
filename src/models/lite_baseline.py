@@ -101,12 +101,7 @@ class LiteBaseline(nn.Module):
             num_groups=num_groups,
             dropout=dropout,
         )
-        self.speed_head = SpeedHead(
-            1,
-            2,
-            3,
-            dropout=dropout,
-        )
+        self.speed_head = SpeedHead(1, 2, 3, dropout=dropout)
 
         self.classifier = nn.Sequential(
             nn.Linear(out_channels + 2, out_channels),

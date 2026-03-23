@@ -242,6 +242,13 @@ class Trainer:
         for param_group in self.optimizer.param_groups:
             param_group["lr"] = lr
 
+    @staticmethod
+    def _copy_epoch_outputs(outputs: dict) -> dict:
+        copied = {}
+        for key, value in outputs.items():
+            copied[key] = value.copy() if hasattr(value, "copy") else value
+        return copied
+
     def train_one_epoch(
         self,
         epoch: int,
@@ -409,8 +416,8 @@ class Trainer:
                 self.best_epoch = epoch
                 self.best_train_metrics = train_metrics.copy()
                 self.best_val_metrics = val_metrics.copy()
-                self.best_train_outputs = {k: v.copy() for k, v in train_outputs.items()}
-                self.best_val_outputs = {k: v.copy() for k, v in val_outputs.items()}
+                self.best_train_outputs = self._copy_epoch_outputs(train_outputs)
+                self.best_val_outputs = self._copy_epoch_outputs(val_outputs)
                 self.best_threshold = threshold
                 self._save_checkpoint(epoch, current_score)
                 epochs_without_improvement = 0
