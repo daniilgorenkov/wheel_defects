@@ -2,32 +2,84 @@ import torch
 from torch import nn
 
 
-class FeaturesConvBlock(nn.Module):
+class SpeedHead(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int = 2,
+        kernel_size: int = 3,
+        dropout: float = 0.2,
+    ):
+        super().__init__()
+
+        self.conv = nn.Conv1d(in_channels, out_channels, kernel_size, padding=kernel_size // 2)
+        self.norm = nn.BatchNorm1d(out_channels)  # BatchNorm1d(out_channels)
+        self.act = nn.GELU()  # ReLU(), SiLU(), GELU()
+        self.dropout = nn.Dropout(dropout)
+        self.pool = nn.AdaptiveAvgPool1d(1)  # для получения фиксированного размера фичей
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.norm(x)
+        x = self.act(x)
+        x = self.dropout(x)
+        x = self.pool(x).squeeze(-1)  # (batch_size, out_channels)
+        return x
+
+
+class DeepFeaturesConvBlock(nn.Module):
     def __init__(
         self,
         in_channels: int,
         out_channels: int,
         kernel_size: int,
         num_groups: int,
-        use_norm: bool = True,
         dropout: float = 0.2,
     ):
         super().__init__()
-        self.use_norm = use_norm
-        self.conv = nn.Conv1d(in_channels, out_channels, kernel_size, padding=kernel_size // 2)
-        if self.use_norm:
-            self.bn = nn.GroupNorm(num_groups, out_channels)
-        self.act = nn.SiLU()  # ReLU(), SiLU(), GELU()
-        self.dropout = nn.Dropout(dropout)
-        self.pool = nn.AdaptiveAvgPool1d(1)  # для получения фиксированного размера фичей
+
+        self.conv1 = nn.Conv1d(in_channels, out_channels, kernel_size, padding=kernel_size // 2)
+        self.norm1 = nn.GroupNorm(num_groups, out_channels)
+        self.act1 = nn.GELU()
+        self.dropout1 = nn.Dropout(dropout)
+
+        self.conv2 = nn.Conv1d(out_channels, out_channels, kernel_size, padding=kernel_size // 2)
+        self.norm2 = nn.GroupNorm(num_groups, out_channels)
+        self.act2 = nn.GELU()
+        self.dropout2 = nn.Dropout(dropout)
+
+        self.conv3 = nn.Conv1d(out_channels, out_channels, kernel_size, padding=kernel_size // 2)
+        self.norm3 = nn.GroupNorm(num_groups, out_channels)
+        self.act3 = nn.GELU()
+        self.dropout3 = nn.Dropout(dropout)
+
+        self.skip_proj = (
+            nn.Identity() if in_channels == out_channels else nn.Conv1d(in_channels, out_channels, kernel_size=1)
+        )
+
+        self.pool = nn.AdaptiveAvgPool1d(1)
 
     def forward(self, x):
-        x = self.conv(x)
-        if self.use_norm:
-            x = self.bn(x)
-        x = self.act(x)
-        x = self.dropout(x)
+        skip_connection = self.skip_proj(x)  # сохраняем вход для пропуска
+
+        x = self.conv1(x)
+        x = self.norm1(x)
+        x = self.act1(x)
+        x = self.dropout1(x)
+
+        x = self.conv2(x)
+        x = self.norm2(x)
+        x = self.act2(x)
+        x = self.dropout2(x)
+
+        x = self.conv3(x)
+        x = self.norm3(x)
+        x = x + skip_connection  # добавляем пропуск
+        x = self.act3(x)
+        x = self.dropout3(x)
+
         x = self.pool(x).squeeze(-1)  # (batch_size, out_channels)
+
         return x
 
 
@@ -36,32 +88,28 @@ class LiteBaseline(nn.Module):
         self,
         out_channels: int,
         kernel_size: int,
-        use_norm: bool,
         num_groups: int = None,
         dropout: float = 0.2,
     ):
         super().__init__()
 
         # фичи  из ускорений и обработка сигнала скорости буду идти отдельно и после препроцесса обхединячтся
-        self.signal_head = FeaturesConvBlock(
+        self.signal_head = DeepFeaturesConvBlock(
             1,
             out_channels,
             kernel_size,
             num_groups=num_groups,
             dropout=dropout,
-            use_norm=use_norm,
         )
-        self.speed_head = FeaturesConvBlock(
+        self.speed_head = SpeedHead(
             1,
-            out_channels,
-            kernel_size,
-            num_groups=num_groups,
+            2,
+            3,
             dropout=dropout,
-            use_norm=use_norm,
         )
 
         self.classifier = nn.Sequential(
-            nn.Linear(out_channels * 2, out_channels),
+            nn.Linear(out_channels + 2, out_channels),
             nn.GELU(),
             nn.Dropout(dropout),
             nn.Linear(out_channels, 2),

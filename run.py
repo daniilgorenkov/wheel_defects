@@ -1,13 +1,19 @@
-from pyexpat import model
+from functools import partial
 
 from src.mixins.dataset_builder import DataProcessor
 from src.mixins.preprocessor import PreprocessorMixin
 from src.mixins.trainer import Trainer
 from src.models.baseline import Baseline
+from src.mixins.metrics import FocalLoss
 from src.models.lite_baseline import LiteBaseline
 import config
 from torch import nn
 import torch
+from argparse import ArgumentParser
+
+arg_parser = ArgumentParser()
+arg_parser.add_argument("--train", action="store_true", help="Train the model")
+args = arg_parser.parse_args()
 
 
 class ModelBuilder:
@@ -33,7 +39,10 @@ class ModelBuilder:
 
     def build(self):
         # Preprocess the data
-        data = self.preprocessor.preprocess()
+        if args.train:
+            data = self.preprocessor.load_samples("prep_data")
+        else:
+            data = self.preprocessor.preprocess()
 
         # Process the dataset
         train_loader, val_loader = self.data_processor.process(
@@ -47,18 +56,18 @@ class ModelBuilder:
             epochs=config.TrainerConfig.epochs,
             train_loader=train_loader,
             val_loader=val_loader,
-            loss_fn=nn.CrossEntropyLoss,
+            loss_fn=partial(FocalLoss, gamma=2.0),
             optimizer=torch.optim.AdamW,
             lr=config.TrainerConfig.lr,
+            patience=config.TrainerConfig.patience,
         )
 
 
 if __name__ == "__main__":
     model_config = {
-        "out_channels": 32,
-        "kernel_size": 5,
-        "use_norm": True,
-        "num_groups": 4,
+        "out_channels": 64,
+        "kernel_size": 7,
+        "num_groups": 8,
         "dropout": 0.2,
     }
 

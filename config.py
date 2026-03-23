@@ -7,11 +7,12 @@ class TrainerConfig:
     task_name: str = "baseline-cnn"
     seed: int = 101
 
-    lr: float = 1e-3
-    weight_decay: float = 1e-4
+    lr: float = 3e-3
+    weight_decay: float = 3e-4
     batch_size: int = 64
     num_workers: int = 4
-    epochs: int = 20
+    epochs: int = 30
+    patience: int = 7
 
     use_speed: bool = True
     monitor_metric: str = "f1"

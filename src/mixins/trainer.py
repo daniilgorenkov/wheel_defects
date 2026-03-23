@@ -3,16 +3,21 @@ import random
 from config import TrainerConfig
 from typing import Mapping, Optional, Type
 
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
 from clearml import Task
 from sklearn.metrics import (
+    average_precision_score,
     accuracy_score,
     confusion_matrix,
     f1_score,
+    precision_recall_curve,
     precision_score,
     recall_score,
+    roc_auc_score,
+    roc_curve,
 )
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -39,6 +44,9 @@ class Trainer:
         self.optimizer = None
         self.best_train_metrics = {}
         self.best_val_metrics = {}
+        self.best_train_outputs = {}
+        self.best_val_outputs = {}
+        self.best_threshold = 0.5
 
         os.makedirs(TrainerConfig.save_dir, exist_ok=True)
         self.best_path = os.path.join(TrainerConfig.save_dir, TrainerConfig.save_best_name)
@@ -77,13 +85,46 @@ class Trainer:
         torch.cuda.manual_seed_all(seed)
 
     @staticmethod
-    def compute_metrics(y_true, y_pred) -> dict:
-        return {
+    def compute_metrics(y_true, y_pred, y_prob=None, threshold: Optional[float] = None) -> dict:
+        metrics = {
             "accuracy": accuracy_score(y_true, y_pred),
             "precision": precision_score(y_true, y_pred, zero_division=0),
             "recall": recall_score(y_true, y_pred, zero_division=0),
             "f1": f1_score(y_true, y_pred, zero_division=0),
         }
+
+        if y_prob is not None and len(set(y_true)) > 1:
+            metrics["roc_auc"] = roc_auc_score(y_true, y_prob)
+            metrics["pr_auc"] = average_precision_score(y_true, y_prob)
+
+        if threshold is not None:
+            metrics["threshold"] = threshold
+
+        return metrics
+
+    @staticmethod
+    def _extract_probabilities(logits: torch.Tensor) -> torch.Tensor:
+        # Handles both [B, 2] and [B] / [B, 1] binary logits formats.
+        if logits.ndim == 2 and logits.size(1) > 1:
+            return torch.softmax(logits, dim=1)[:, 1]
+        return torch.sigmoid(logits.view(-1))
+
+    @staticmethod
+    def _predict_from_probabilities(probs: list[float], threshold: float) -> list[int]:
+        return (np.array(probs) >= threshold).astype(int).tolist()
+
+    @staticmethod
+    def _find_best_threshold_for_f1(y_true, y_prob) -> float:
+        if len(set(y_true)) < 2:
+            return 0.5
+
+        precision, recall, thresholds = precision_recall_curve(y_true, y_prob)
+        if len(thresholds) == 0:
+            return 0.5
+
+        f1_scores = (2 * precision[:-1] * recall[:-1]) / (precision[:-1] + recall[:-1] + 1e-12)
+        best_idx = int(np.nanargmax(f1_scores))
+        return float(thresholds[best_idx])
 
     def _log_metrics_to_clearml(self, metrics: dict, stage: str, epoch: int) -> None:
         for metric_name, value in metrics.items():
@@ -107,6 +148,74 @@ class Trainer:
             xaxis="predicted",
             yaxis="actual",
         )
+
+    def _log_probability_distribution_to_clearml(self, y_true, y_prob, stage: str, epoch: int) -> None:
+        y_true_arr = np.array(y_true)
+        y_prob_arr = np.array(y_prob)
+
+        fig, ax = plt.subplots(figsize=(7, 4))
+        ax.hist(y_prob_arr[y_true_arr == 0], bins=20, alpha=0.6, label="class 0")
+        ax.hist(y_prob_arr[y_true_arr == 1], bins=20, alpha=0.6, label="class 1")
+        ax.set_title(f"{stage} probability distribution")
+        ax.set_xlabel("P(class=1)")
+        ax.set_ylabel("count")
+        ax.legend()
+        ax.grid(alpha=0.2)
+
+        self.logger.report_matplotlib_figure(
+            title=f"{stage}_probability_distribution",
+            series="probability_distribution",
+            iteration=epoch,
+            figure=fig,
+        )
+        plt.close(fig)
+
+    def _log_pr_curve_to_clearml(self, y_true, y_prob, stage: str, epoch: int) -> None:
+        if len(set(y_true)) < 2:
+            return
+
+        precision, recall, _ = precision_recall_curve(y_true, y_prob)
+        ap = average_precision_score(y_true, y_prob)
+
+        fig, ax = plt.subplots(figsize=(6, 6))
+        ax.plot(recall, precision, label=f"AP={ap:.4f}")
+        ax.set_title(f"{stage} PR curve")
+        ax.set_xlabel("Recall")
+        ax.set_ylabel("Precision")
+        ax.legend(loc="lower left")
+        ax.grid(alpha=0.2)
+
+        self.logger.report_matplotlib_figure(
+            title=f"{stage}_pr_curve",
+            series="pr_curve",
+            iteration=epoch,
+            figure=fig,
+        )
+        plt.close(fig)
+
+    def _log_roc_curve_to_clearml(self, y_true, y_prob, stage: str, epoch: int) -> None:
+        if len(set(y_true)) < 2:
+            return
+
+        fpr, tpr, _ = roc_curve(y_true, y_prob)
+        auc_score = roc_auc_score(y_true, y_prob)
+
+        fig, ax = plt.subplots(figsize=(6, 6))
+        ax.plot(fpr, tpr, label=f"AUC={auc_score:.4f}")
+        ax.plot([0, 1], [0, 1], linestyle="--", color="gray")
+        ax.set_title(f"{stage} ROC curve")
+        ax.set_xlabel("False Positive Rate")
+        ax.set_ylabel("True Positive Rate")
+        ax.legend(loc="lower right")
+        ax.grid(alpha=0.2)
+
+        self.logger.report_matplotlib_figure(
+            title=f"{stage}_roc_curve",
+            series="roc_curve",
+            iteration=epoch,
+            figure=fig,
+        )
+        plt.close(fig)
 
     def _save_checkpoint(self, epoch: int, score: float) -> None:
         serializable_config = {
@@ -143,8 +252,8 @@ class Trainer:
             raise RuntimeError("Trainer is not initialized. Call fit() before training.")
 
         total_loss = 0.0
-        all_preds = []
         all_targets = []
+        all_probs = []
 
         progress = tqdm(train_loader, desc=f"train {epoch}", leave=False)
 
@@ -166,19 +275,17 @@ class Trainer:
 
             total_loss += loss.item() * signal.size(0)
 
-            preds = logits.argmax(dim=1)
-            all_preds.extend(preds.detach().cpu().tolist())
+            probs_pos = self._extract_probabilities(logits)
             all_targets.extend(target.detach().cpu().tolist())
+            all_probs.extend(probs_pos.detach().cpu().tolist())
 
             progress.set_postfix(loss=f"{loss.item():.4f}")
 
-        metrics = self.compute_metrics(all_targets, all_preds)
-        metrics["loss"] = total_loss / len(train_loader.dataset)
-
-        self._log_metrics_to_clearml(metrics, stage="train", epoch=epoch)
-        self._log_confusion_matrix_to_clearml(all_targets, all_preds, stage="train", epoch=epoch)
-
-        return metrics
+        return {
+            "loss": total_loss / len(train_loader.dataset),
+            "targets": all_targets,
+            "probs": all_probs,
+        }
 
     @torch.no_grad()
     def eval_one_epoch(
@@ -189,8 +296,8 @@ class Trainer:
         self.model.eval()
 
         total_loss = 0.0
-        all_preds = []
         all_targets = []
+        all_probs = []
 
         progress = tqdm(val_loader, desc=f"eval {epoch}", leave=False)
 
@@ -207,19 +314,17 @@ class Trainer:
 
             total_loss += loss.item() * signal.size(0)
 
-            preds = logits.argmax(dim=1)
-            all_preds.extend(preds.detach().cpu().tolist())
+            probs_pos = self._extract_probabilities(logits)
             all_targets.extend(target.detach().cpu().tolist())
+            all_probs.extend(probs_pos.detach().cpu().tolist())
 
             progress.set_postfix(loss=f"{loss.item():.4f}")
 
-        metrics = self.compute_metrics(all_targets, all_preds)
-        metrics["loss"] = total_loss / len(val_loader.dataset)
-
-        self._log_metrics_to_clearml(metrics, stage="val", epoch=epoch)
-        self._log_confusion_matrix_to_clearml(all_targets, all_preds, stage="val", epoch=epoch)
-
-        return metrics
+        return {
+            "loss": total_loss / len(val_loader.dataset),
+            "targets": all_targets,
+            "probs": all_probs,
+        }
 
     def fit(
         self,
@@ -258,8 +363,35 @@ class Trainer:
             if lr_by_epoch and epoch in lr_by_epoch:
                 self._set_optimizer_lr(lr_by_epoch[epoch])
 
-            train_metrics = self.train_one_epoch(epoch, train_loader)
-            val_metrics = self.eval_one_epoch(epoch, val_loader)
+            train_outputs = self.train_one_epoch(epoch, train_loader)
+            val_outputs = self.eval_one_epoch(epoch, val_loader)
+
+            threshold = self._find_best_threshold_for_f1(val_outputs["targets"], val_outputs["probs"])
+
+            train_preds = self._predict_from_probabilities(train_outputs["probs"], threshold)
+            val_preds = self._predict_from_probabilities(val_outputs["probs"], threshold)
+
+            train_metrics = self.compute_metrics(
+                train_outputs["targets"],
+                train_preds,
+                train_outputs["probs"],
+                threshold=threshold,
+            )
+            train_metrics["loss"] = train_outputs["loss"]
+
+            val_metrics = self.compute_metrics(
+                val_outputs["targets"],
+                val_preds,
+                val_outputs["probs"],
+                threshold=threshold,
+            )
+            val_metrics["loss"] = val_outputs["loss"]
+
+            self._log_metrics_to_clearml(train_metrics, stage="train", epoch=epoch)
+            self._log_metrics_to_clearml(val_metrics, stage="val", epoch=epoch)
+
+            train_outputs["preds"] = train_preds
+            val_outputs["preds"] = val_preds
 
             current_score = val_metrics[TrainerConfig.monitor_metric]
 
@@ -277,10 +409,15 @@ class Trainer:
                 self.best_epoch = epoch
                 self.best_train_metrics = train_metrics.copy()
                 self.best_val_metrics = val_metrics.copy()
+                self.best_train_outputs = {k: v.copy() for k, v in train_outputs.items()}
+                self.best_val_outputs = {k: v.copy() for k, v in val_outputs.items()}
+                self.best_threshold = threshold
                 self._save_checkpoint(epoch, current_score)
                 epochs_without_improvement = 0
 
-                self.logger.report_text(f"[BEST] epoch={epoch}, {TrainerConfig.monitor_metric}={current_score:.6f}")
+                self.logger.report_text(
+                    f"[BEST] epoch={epoch}, {TrainerConfig.monitor_metric}={current_score:.6f}, threshold={threshold:.4f}"
+                )
             else:
                 epochs_without_improvement += 1
 
@@ -290,11 +427,67 @@ class Trainer:
                 self.logger.report_text(message)
                 break
 
-        print(f"Best epoch: {self.best_epoch} | " f"best_{TrainerConfig.monitor_metric}={self.best_score:.4f}")
+        print(
+            f"Best epoch: {self.best_epoch} | "
+            f"best_{TrainerConfig.monitor_metric}={self.best_score:.4f} | "
+            f"threshold={self.best_threshold:.4f}"
+        )
 
         if self.best_epoch > 0:
             self._log_metrics_to_clearml(self.best_train_metrics, stage="train_best", epoch=self.best_epoch)
             self._log_metrics_to_clearml(self.best_val_metrics, stage="val_best", epoch=self.best_epoch)
+
+            self._log_confusion_matrix_to_clearml(
+                self.best_train_outputs["targets"],
+                self.best_train_outputs["preds"],
+                stage="train_best",
+                epoch=self.best_epoch,
+            )
+            self._log_confusion_matrix_to_clearml(
+                self.best_val_outputs["targets"],
+                self.best_val_outputs["preds"],
+                stage="val_best",
+                epoch=self.best_epoch,
+            )
+
+            self._log_probability_distribution_to_clearml(
+                self.best_train_outputs["targets"],
+                self.best_train_outputs["probs"],
+                stage="train_best",
+                epoch=self.best_epoch,
+            )
+            self._log_probability_distribution_to_clearml(
+                self.best_val_outputs["targets"],
+                self.best_val_outputs["probs"],
+                stage="val_best",
+                epoch=self.best_epoch,
+            )
+
+            self._log_pr_curve_to_clearml(
+                self.best_train_outputs["targets"],
+                self.best_train_outputs["probs"],
+                stage="train_best",
+                epoch=self.best_epoch,
+            )
+            self._log_pr_curve_to_clearml(
+                self.best_val_outputs["targets"],
+                self.best_val_outputs["probs"],
+                stage="val_best",
+                epoch=self.best_epoch,
+            )
+
+            self._log_roc_curve_to_clearml(
+                self.best_train_outputs["targets"],
+                self.best_train_outputs["probs"],
+                stage="train_best",
+                epoch=self.best_epoch,
+            )
+            self._log_roc_curve_to_clearml(
+                self.best_val_outputs["targets"],
+                self.best_val_outputs["probs"],
+                stage="val_best",
+                epoch=self.best_epoch,
+            )
 
         self.task.upload_artifact("best_model_path", artifact_object=self.best_path)
 

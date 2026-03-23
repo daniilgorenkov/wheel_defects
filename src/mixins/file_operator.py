@@ -2,6 +2,7 @@ import os
 from dataclasses import dataclass
 import pandas as pd
 import torch
+import pickle as pkl
 
 
 @dataclass
@@ -35,3 +36,13 @@ class FileOperatorMixin:
     def get_all_fnames(self, dirname: str, ext: str = "csv"):
         fpath = os.path.join(Paths.DATA_PATH, dirname)
         return [os.path.splitext(f)[0] for f in os.listdir(fpath) if f.endswith(ext)]
+
+    def save_samples(self, samples: list[dict], fname: str):
+        fpath = os.path.join(Paths.DATA_PATH, fname + ".pkl")
+        with open(fpath, "wb") as f:
+            pkl.dump(samples, f)
+
+    def load_samples(self, fname: str) -> list[dict]:
+        fpath = os.path.join(Paths.DATA_PATH, fname + ".pkl")
+        with open(fpath, "rb") as f:
+            return pkl.load(f)

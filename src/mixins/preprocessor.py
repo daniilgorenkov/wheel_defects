@@ -14,7 +14,9 @@ class PreprocessorMixin(FileOperatorMixin):
             for fname in self.get_all_fnames(dirname):
                 preprocessed_data[fname] = self.preprocess_file(fname, dirname)
 
-        return self.build_samples(preprocessed_data)
+        samples = self.build_samples(preprocessed_data)
+        self.save_samples(self.build_samples(preprocessed_data), "prep_data")
+        return samples
 
     def create_target(self, fname: str):
         marker = fname.split("_")[-2]
