@@ -65,9 +65,11 @@ class ModelBuilder:
 
 if __name__ == "__main__":
     model_config = {
-        "out_channels": 64,
-        "kernel_size": 7,
-        "num_groups": 8,
+        "out_channels_signal": 64,
+        "kernel_size_signal": 7,
+        "num_groups_signal": 8,
+        "out_channels_speed": 2,
+        "kernel_size_speed": 3,
         "dropout": 0.2,
     }
 

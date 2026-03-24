@@ -8,6 +8,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from clearml import Task
+from src.mixins.plot_utils import TargetSpaceVisualizer
 from sklearn.metrics import (
     average_precision_score,
     accuracy_score,
@@ -212,6 +213,37 @@ class Trainer:
         self.logger.report_matplotlib_figure(
             title=f"{stage}_roc_curve",
             series="roc_curve",
+            iteration=epoch,
+            figure=fig,
+        )
+        plt.close(fig)
+
+    def _log_embedding_space_to_clearml(self, val_loader: DataLoader, epoch: int) -> None:
+        method = getattr(TrainerConfig, "embedding_plot_method", "tsne")
+        random_state = int(getattr(TrainerConfig, "embedding_plot_random_state", TrainerConfig.seed))
+        perplexity = float(getattr(TrainerConfig, "embedding_plot_tsne_perplexity", 30.0))
+        max_iter = int(getattr(TrainerConfig, "embedding_plot_tsne_max_iter", 1000))
+
+        visualizer = TargetSpaceVisualizer(
+            method=method,
+            random_state=random_state,
+            standardize=True,
+        )
+
+        fig, _ = visualizer.plot_model_embeddings(
+            model=self.model,
+            dataloader=val_loader,
+            device=self.device,
+            title=f"Validation embedding space ({method})",
+            show_decision_boundary=True,
+            decision_threshold=self.best_threshold,
+            tsne_perplexity=perplexity,
+            tsne_max_iter=max_iter,
+        )
+
+        self.logger.report_matplotlib_figure(
+            title="val_best_embedding_space",
+            series=f"embedding_{method}",
             iteration=epoch,
             figure=fig,
         )
@@ -495,6 +527,11 @@ class Trainer:
                 stage="val_best",
                 epoch=self.best_epoch,
             )
+
+            try:
+                self._log_embedding_space_to_clearml(val_loader=val_loader, epoch=self.best_epoch)
+            except Exception as exc:
+                self.logger.report_text(f"[WARN] embedding plot logging failed: {exc}")
 
         self.task.upload_artifact("best_model_path", artifact_object=self.best_path)
 

@@ -5,7 +5,7 @@ import numpy as np
 class TrainerConfig:
     project_name: str = "wheel-defects"
     task_name: str = "baseline-cnn"
-    seed: int = 101
+    seed: int = 102
 
     lr: float = 3e-3
     weight_decay: float = 3e-4

@@ -86,9 +86,11 @@ class DeepFeaturesConvBlock(nn.Module):
 class LiteBaseline(nn.Module):
     def __init__(
         self,
-        out_channels: int,
-        kernel_size: int,
-        num_groups: int = None,
+        out_channels_signal: int,
+        kernel_size_signal: int,
+        num_groups_signal: int = None,
+        out_channels_speed: int = 2,
+        kernel_size_speed: int = 3,
         dropout: float = 0.2,
     ):
         super().__init__()
@@ -96,18 +98,18 @@ class LiteBaseline(nn.Module):
         # фичи  из ускорений и обработка сигнала скорости буду идти отдельно и после препроцесса обхединячтся
         self.signal_head = DeepFeaturesConvBlock(
             1,
-            out_channels,
-            kernel_size,
-            num_groups=num_groups,
+            out_channels_signal,
+            kernel_size_signal,
+            num_groups=num_groups_signal,
             dropout=dropout,
         )
-        self.speed_head = SpeedHead(1, 2, 3, dropout=dropout)
+        self.speed_head = SpeedHead(1, out_channels_speed, kernel_size_speed, dropout=dropout)
 
         self.classifier = nn.Sequential(
-            nn.Linear(out_channels + 2, out_channels),
+            nn.Linear(out_channels_signal + out_channels_speed, out_channels_signal),
             nn.GELU(),
             nn.Dropout(dropout),
-            nn.Linear(out_channels, 2),
+            nn.Linear(out_channels_signal, 2),
         )
 
     def forward(self, signal: torch.Tensor, speed: torch.Tensor):
