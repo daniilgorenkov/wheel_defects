@@ -6,6 +6,7 @@ from src.mixins.trainer import Trainer
 from src.models.baseline import Baseline
 from src.mixins.metrics import FocalLoss
 from src.models.lite_baseline import LiteBaseline
+from src.models.three_head_model import ThreeHeadModel
 import config
 from torch import nn
 import torch
@@ -66,7 +67,7 @@ class ModelBuilder:
 if __name__ == "__main__":
     model_config = {
         "out_channels_signal": 64,
-        "kernel_size_signal": 7,
+        # "kernel_size_signal": 7,
         "num_groups_signal": 8,
         "out_channels_speed": 2,
         "kernel_size_speed": 3,
@@ -77,7 +78,7 @@ if __name__ == "__main__":
         preprocessor=PreprocessorMixin,
         data_processor=DataProcessor,
         trainer=Trainer,
-        model=LiteBaseline,
+        model=ThreeHeadModel,
         model_config=model_config,
     )
     model_builder.build()
