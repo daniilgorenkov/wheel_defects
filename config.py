@@ -11,7 +11,7 @@ class TrainerConfig:
     weight_decay: float = 3e-4
     batch_size: int = 64
     num_workers: int = 4
-    epochs: int = 30
+    epochs: int = 2
     patience: int = 7
 
     use_speed: bool = True

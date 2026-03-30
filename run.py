@@ -6,6 +6,7 @@ from src.mixins.trainer import Trainer
 from src.models.baseline import Baseline
 from src.mixins.metrics import FocalLoss
 from src.models.lite_baseline import LiteBaseline
+from src.models.transformer import CNNTransformerEncoder
 from src.models.three_head_model import ThreeHeadModel
 import config
 from torch import nn
@@ -71,6 +72,8 @@ if __name__ == "__main__":
         "num_groups_signal": 8,
         "out_channels_speed": 2,
         "kernel_size_speed": 3,
+        "nheads": 4,
+        "enc_layers": 2,
         "dropout": 0.2,
     }
 
@@ -78,7 +81,7 @@ if __name__ == "__main__":
         preprocessor=PreprocessorMixin,
         data_processor=DataProcessor,
         trainer=Trainer,
-        model=ThreeHeadModel,
+        model=CNNTransformerEncoder,
         model_config=model_config,
     )
     model_builder.build()

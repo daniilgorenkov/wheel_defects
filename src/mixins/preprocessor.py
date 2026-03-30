@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from sklearn.discriminant_analysis import StandardScaler
 from src.mixins.file_operator import FileOperatorMixin
 from collections import Counter
 from config import PreprocessorConfig
@@ -36,12 +37,16 @@ class PreprocessorMixin(FileOperatorMixin):
         print(f"Class distribution in samples: {c}")
         return samples
 
+    def normalize_signal(self, signal: np.ndarray) -> np.ndarray:
+        enc = StandardScaler()
+        return enc.fit_transform(signal.reshape(-1, 1)).flatten()
+
     def preprocess_file(self, fname: str, dirname: str):
 
         df = self.load(fname, dirname, use_cols=PreprocessorConfig.USE_COLS)
         df["datatime"] = pd.to_datetime(df["datatime"])
-
         df = self.filter_by_speed(df)
+        df["accz"] = self.normalize_signal(df["accz"].values)
         revolutions = self.split_data_by_rotation(
             df,
             wheel_diameter=PreprocessorConfig.WHEEL_DIAMETER,

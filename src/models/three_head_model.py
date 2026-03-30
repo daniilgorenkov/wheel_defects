@@ -11,6 +11,7 @@ class ShortFeaturesConvBlock(nn.Module):
         num_groups: int,
         dropout: float = 0.2,
         kernel_size: int = 3,
+        pooling: bool = True,
     ):
         super().__init__()
 
@@ -32,9 +33,11 @@ class ShortFeaturesConvBlock(nn.Module):
         self.skip_proj = (
             nn.Identity() if in_channels == out_channels else nn.Conv1d(in_channels, out_channels, kernel_size=1)
         )
+
+        self.pooling = pooling
         self.pool = nn.AdaptiveAvgPool1d(1)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
         skip_connection = self.skip_proj(x)  # сохраняем вход для пропуска
 
         x = self.conv1(x)
@@ -53,9 +56,11 @@ class ShortFeaturesConvBlock(nn.Module):
         x = self.act3(x)
         x = self.dropout3(x)
 
-        x = self.pool(x).squeeze(-1)  # (batch_size, out_channels)
-
-        return x  # [B,C,T]
+        if self.pooling:
+            x = self.pool(x).squeeze(-1)  # (batch_size, out_channels)
+            return x  # [B,C,T]
+        else:
+            return x.permute(0, 2, 1)  # [B,T,C] for transformer
 
 
 class LongFeaturesConvBlock(nn.Module):
@@ -66,6 +71,7 @@ class LongFeaturesConvBlock(nn.Module):
         num_groups: int,
         dropout: float = 0.2,
         kernel_size: int = 7,
+        pooling: bool = True,
     ):
         super().__init__()
 
@@ -88,6 +94,7 @@ class LongFeaturesConvBlock(nn.Module):
             nn.Identity() if in_channels == out_channels else nn.Conv1d(in_channels, out_channels, kernel_size=1)
         )
 
+        self.pooling = pooling
         self.pool = nn.AdaptiveAvgPool1d(1)
 
     def forward(self, x):
@@ -109,9 +116,11 @@ class LongFeaturesConvBlock(nn.Module):
         x = self.act3(x)
         x = self.dropout3(x)
 
-        x = self.pool(x).squeeze(-1)  # (batch_size, out_channels)
-
-        return x  # [B,C]
+        if self.pooling:
+            x = self.pool(x).squeeze(-1)  # (batch_size, out_channels)
+            return x  # [B,C,T]
+        else:
+            return x.permute(0, 2, 1)  # [B,T,C] for transformer
 
 
 class ThreeHeadModel(nn.Module):

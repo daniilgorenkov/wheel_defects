@@ -8,7 +8,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from clearml import Task
-from src.mixins.plot_utils import TargetSpaceVisualizer
+from src.mixins.plot_utils import ModelGraphSaver, TargetSpaceVisualizer
 from sklearn.metrics import (
     average_precision_score,
     accuracy_score,
@@ -229,25 +229,20 @@ class Trainer:
             random_state=random_state,
             standardize=True,
         )
-
-        fig, _ = visualizer.plot_model_embeddings(
+        saver = ModelGraphSaver(logger=self.logger, close_after_save=True)
+        saver.save_model_plot(
+            visualizer=visualizer,
             model=self.model,
             dataloader=val_loader,
             device=self.device,
-            title=f"Validation embedding space ({method})",
+            title="val_best_embedding_space",
+            series=f"embedding_{method}",
+            iteration=epoch,
             show_decision_boundary=True,
             decision_threshold=self.best_threshold,
             tsne_perplexity=perplexity,
             tsne_max_iter=max_iter,
         )
-
-        self.logger.report_matplotlib_figure(
-            title="val_best_embedding_space",
-            series=f"embedding_{method}",
-            iteration=epoch,
-            figure=fig,
-        )
-        plt.close(fig)
 
     def _save_checkpoint(self, epoch: int, score: float) -> None:
         serializable_config = {
@@ -273,6 +268,81 @@ class Trainer:
             raise RuntimeError("Optimizer is not initialized. Call fit() first.")
         for param_group in self.optimizer.param_groups:
             param_group["lr"] = lr
+
+    def _log_model_architecture_to_clearml(self, train_loader: DataLoader) -> None:
+        """Log a compact, readable model architecture summary to ClearML."""
+        self.logger.report_text(f"[MODEL]\n{self.model}")
+
+        if train_loader is None:
+            self.logger.report_text("[WARN] train_loader is None, architecture graph logging skipped")
+            return
+
+        try:
+            batch = next(iter(train_loader))
+        except StopIteration:
+            self.logger.report_text("[WARN] train_loader is empty, architecture graph logging skipped")
+            return
+        except Exception as exc:
+            self.logger.report_text(f"[WARN] cannot read sample batch for architecture graph: {exc}")
+            return
+
+        signal = batch["signal"].to(self.device)
+        speed = batch.get("speed")
+        if speed is not None:
+            speed = speed.to(self.device)
+
+        if signal.size(0) > 1:
+            signal = signal[:1]
+        if speed is not None and speed.size(0) > 1:
+            speed = speed[:1]
+
+        try:
+            total_params = sum(p.numel() for p in self.model.parameters())
+            trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+
+            summary_lines = [
+                f"Model: {self.model.__class__.__name__}",
+                f"Input signal shape: {tuple(signal.shape)}",
+                f"Input speed shape: {tuple(speed.shape) if speed is not None else 'N/A'}",
+                f"Total params: {total_params:,}",
+                f"Trainable params: {trainable_params:,}",
+                "",
+                "Top-level blocks:",
+            ]
+
+            children = list(self.model.named_children())
+            if not children:
+                summary_lines.append("- (no child modules)")
+            else:
+                for name, module in children:
+                    block_params = sum(p.numel() for p in module.parameters())
+                    summary_lines.append(f"- {name}: {module.__class__.__name__} ({block_params:,} params)")
+
+            summary_text = "\n".join(summary_lines)
+
+            fig, ax = plt.subplots(figsize=(16, 9))
+            ax.axis("off")
+            ax.text(
+                0.01,
+                0.99,
+                summary_text,
+                va="top",
+                ha="left",
+                family="monospace",
+                fontsize=10,
+                wrap=True,
+            )
+            ax.set_title("Model architecture summary")
+
+            self.logger.report_matplotlib_figure(
+                title="model_architecture_graph",
+                series="architecture",
+                iteration=0,
+                figure=fig,
+            )
+            plt.close(fig)
+        except Exception as exc:
+            self.logger.report_text(f"[WARN] model architecture graph logging failed: {exc}")
 
     @staticmethod
     def _copy_epoch_outputs(outputs: dict) -> dict:
@@ -392,6 +462,8 @@ class Trainer:
             lr=effective_lr,
             weight_decay=effective_weight_decay,
         )
+
+        self._log_model_architecture_to_clearml(train_loader)
 
         if patience is not None and patience < 1:
             raise ValueError("patience must be >= 1 or None")
