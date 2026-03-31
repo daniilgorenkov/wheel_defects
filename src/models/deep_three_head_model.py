@@ -51,11 +51,21 @@ class DeepThreeHeadModel(nn.Module):
             pooling=False,
         )  # [B,C,O]
 
-        self.speed_head = SpeedHead(1, out_channels_speed, kernel_size_speed, dropout=dropout)  # [B,O]
+        self.speed_head = SpeedHead(
+            1,
+            out_channels_speed,
+            kernel_size_speed,
+            dropout=dropout,
+        )  # [B,O]
 
         self.maxpool_conv = MaxPoolConvBlock(
-            out_channels_signal * 2, out_channels_signal * 2, kernel_size=3, stride=1
+            out_channels_signal * 2,
+            out_channels_signal * 2,
+            kernel_size=3,
+            stride=1,
         )  # [B,2C,O]
+
+        self.signal_pool = nn.AdaptiveAvgPool1d(1)
 
         self.classifier = nn.Sequential(
             nn.Linear(out_channels_signal * 2 + out_channels_speed, out_channels_signal),
@@ -63,8 +73,6 @@ class DeepThreeHeadModel(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(out_channels_signal, 2),
         )
-
-        self.signal_pool = nn.AdaptiveAvgPool1d(1)
 
     def forward(self, signal: torch.Tensor, speed: torch.Tensor):
         if signal.ndim == 2:
