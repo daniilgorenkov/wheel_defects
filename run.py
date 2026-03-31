@@ -73,12 +73,11 @@ class ModelBuilder:
 if __name__ == "__main__":
     model_config = {
         "out_channels_signal": 64,
-        # "kernel_size_signal": 7,
+        "short_kernel_size": 3,  # odd
+        "long_kernel_size": 5,  # odd
         "num_groups_signal": 8,
         "out_channels_speed": 3,
         "kernel_size_speed": 2,
-        # "nheads": 4,
-        # "enc_layers": 2,
         "dropout": 0.2,
     }
 

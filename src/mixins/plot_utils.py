@@ -304,13 +304,7 @@ class TargetSpaceVisualizer:
                 probs = torch.sigmoid(logits.view(-1))
             preds = (probs >= decision_threshold).long()
 
-            if hasattr(model, "encoder"):
-                emb = model.encoder(signal)
-                if getattr(model, "use_speed", False) and speed is not None and hasattr(model, "speed_branch"):
-                    speed_baseline = TargetSpaceVisualizer._prepare_speed_for_baseline(speed.float())
-                    speed_emb = model.speed_branch(speed_baseline)
-                    emb = torch.cat([emb, speed_emb], dim=1)
-            elif hasattr(model, "signal_head") and hasattr(model, "speed_head"):
+            if hasattr(model, "signal_head") and hasattr(model, "speed_head"):
                 signal_lite = signal.unsqueeze(1) if signal.ndim == 2 else signal
                 emb_signal = model.signal_head(signal_lite)
                 if speed is None:
@@ -318,6 +312,8 @@ class TargetSpaceVisualizer:
                 speed_lite = TargetSpaceVisualizer._prepare_speed_for_lite(speed.float())
                 emb_speed = model.speed_head(speed_lite)
                 emb = torch.cat([emb_signal, emb_speed], dim=1)
+            elif hasattr(model, "short_block") and hasattr(model, "long_block") and hasattr(model, "speed_head"):
+                emb = model.extract_features(signal, speed)
             else:
                 raise ValueError(
                     "Unsupported model architecture for embedding extraction. "

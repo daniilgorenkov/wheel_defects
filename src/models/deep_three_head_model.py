@@ -29,6 +29,8 @@ class DeepThreeHeadModel(nn.Module):
         self,
         out_channels_signal: int,
         num_groups_signal: int = None,
+        short_kernel_size: int = 3,
+        long_kernel_size: int = 5,
         out_channels_speed: int = 2,
         kernel_size_speed: int = 3,
         dropout: float = 0.2,
@@ -40,6 +42,7 @@ class DeepThreeHeadModel(nn.Module):
             out_channels_signal,
             num_groups_signal,
             dropout,
+            kernel_size=short_kernel_size,
             pooling=False,
         )  # [B,C,O]
 
@@ -48,6 +51,7 @@ class DeepThreeHeadModel(nn.Module):
             out_channels_signal,
             num_groups_signal,
             dropout,
+            kernel_size=long_kernel_size,
             pooling=False,
         )  # [B,C,O]
 
@@ -74,7 +78,8 @@ class DeepThreeHeadModel(nn.Module):
             nn.Linear(out_channels_signal, 2),
         )
 
-    def forward(self, signal: torch.Tensor, speed: torch.Tensor):
+    def extract_features(self, signal: torch.Tensor, speed: torch.Tensor):
+
         if signal.ndim == 2:
             signal = signal.unsqueeze(1)
 
@@ -93,7 +98,10 @@ class DeepThreeHeadModel(nn.Module):
 
         combined_features = self.signal_pool(combined_features).squeeze(-1)  # [B,2C*O]
         features = torch.cat([combined_features, speed_features], dim=1)  # [B,2C+speed]
+        return features
 
+    def forward(self, signal: torch.Tensor, speed: torch.Tensor):
+        features = self.extract_features(signal, speed)  # [B,2C+speed]
         output = self.classifier(features)  # [B,2]
 
         return output
