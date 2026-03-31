@@ -112,7 +112,7 @@ class LiteBaseline(nn.Module):
             nn.Linear(out_channels_signal, 2),
         )
 
-    def forward(self, signal: torch.Tensor, speed: torch.Tensor):
+    def extract_features(self, signal: torch.Tensor, speed: torch.Tensor):
         if signal.ndim == 2:
             signal = signal.unsqueeze(1)
 
@@ -124,7 +124,11 @@ class LiteBaseline(nn.Module):
         signal_features = self.signal_head(signal)  # (B, out_channels)
         speed_features = self.speed_head(speed)  # (B, out_channels)
 
-        combined = torch.cat([signal_features, speed_features], dim=1)
+        return torch.cat([signal_features, speed_features], dim=1)
+
+    def forward(self, signal: torch.Tensor, speed: torch.Tensor):
+
+        combined = self.extract_features(signal, speed)  # (B, out_channels_signal + out_channels_speed)
         output = self.classifier(combined)
 
         return output

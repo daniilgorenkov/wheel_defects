@@ -146,7 +146,7 @@ class ThreeHeadModel(nn.Module):
             nn.Linear(out_channels_signal, 2),
         )
 
-    def forward(self, signal: torch.Tensor, speed: torch.Tensor):
+    def extract_features(self, signal: torch.Tensor, speed: torch.Tensor):
         if signal.ndim == 2:
             signal = signal.unsqueeze(1)
 
@@ -155,12 +155,16 @@ class ThreeHeadModel(nn.Module):
         elif speed.ndim == 2:
             speed = speed.unsqueeze(1)  # [B, L] -> [B, 1, L]
 
-        short_features = self.short_block(signal)  # [B,64]
-        long_features = self.long_block(signal)  # [B,64]
+        short_features = self.short_block(signal)  # [B,C]
+        long_features = self.long_block(signal)  # [B,C]
 
-        speed_features = self.speed_head(speed)  # [B,2]
+        speed_features = self.speed_head(speed)  # [B,speed_out]
 
-        combined_features = torch.cat([short_features, long_features, speed_features], dim=1)  # [B,128+2]
+        return torch.cat([short_features, long_features, speed_features], dim=1)  # [B,2C+speed_out]
+
+    def forward(self, signal: torch.Tensor, speed: torch.Tensor):
+
+        combined_features = self.extract_features(signal, speed)  # [B,128+2]
 
         output = self.classifier(combined_features)  # [B,num_classes]
 
