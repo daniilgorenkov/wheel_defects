@@ -8,6 +8,7 @@ from src.mixins.metrics import FocalLoss
 from src.models.lite_baseline import LiteBaseline
 from src.models.transformer import CNNTransformerEncoder
 from src.models.three_head_model import ThreeHeadModel
+from src.models.deep_three_head_model import DeepThreeHeadModel
 import config
 from torch import nn
 import torch
@@ -62,6 +63,10 @@ class ModelBuilder:
             optimizer=torch.optim.AdamW,
             lr=config.TrainerConfig.lr,
             patience=config.TrainerConfig.patience,
+            overfit_patience=config.TrainerConfig.overfit_patience,
+            overfit_f1_gap=config.TrainerConfig.overfit_f1_gap,
+            overfit_loss_gap=config.TrainerConfig.overfit_loss_gap,
+            overfit_warmup_epochs=config.TrainerConfig.overfit_warmup_epochs,
         )
 
 
@@ -72,8 +77,8 @@ if __name__ == "__main__":
         "num_groups_signal": 8,
         "out_channels_speed": 2,
         "kernel_size_speed": 3,
-        "nheads": 4,
-        "enc_layers": 2,
+        # "nheads": 4,
+        # "enc_layers": 2,
         "dropout": 0.2,
     }
 
@@ -81,7 +86,7 @@ if __name__ == "__main__":
         preprocessor=PreprocessorMixin,
         data_processor=DataProcessor,
         trainer=Trainer,
-        model=CNNTransformerEncoder,
+        model=DeepThreeHeadModel,
         model_config=model_config,
     )
     model_builder.build()

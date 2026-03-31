@@ -58,9 +58,9 @@ class ShortFeaturesConvBlock(nn.Module):
 
         if self.pooling:
             x = self.pool(x).squeeze(-1)  # (batch_size, out_channels)
-            return x  # [B,C,T]
+            return x  # [B,C]
         else:
-            return x.permute(0, 2, 1)  # [B,T,C] for transformer
+            return x  # [B,C,T]
 
 
 class LongFeaturesConvBlock(nn.Module):
@@ -118,9 +118,9 @@ class LongFeaturesConvBlock(nn.Module):
 
         if self.pooling:
             x = self.pool(x).squeeze(-1)  # (batch_size, out_channels)
-            return x  # [B,C,T]
+            return x  # [B,C]
         else:
-            return x.permute(0, 2, 1)  # [B,T,C] for transformer
+            return x  # [B,T,C]
 
 
 class ThreeHeadModel(nn.Module):

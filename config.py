@@ -11,8 +11,12 @@ class TrainerConfig:
     weight_decay: float = 3e-4
     batch_size: int = 64
     num_workers: int = 4
-    epochs: int = 2
+    epochs: int = 30
     patience: int = 7
+    overfit_patience: int | None = 4
+    overfit_f1_gap: float = 0.08
+    overfit_loss_gap: float = 0.10
+    overfit_warmup_epochs: int = 3
 
     use_speed: bool = True
     monitor_metric: str = "f1"
