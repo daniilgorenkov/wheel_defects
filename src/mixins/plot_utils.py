@@ -12,6 +12,9 @@ from sklearn.manifold import TSNE
 from sklearn.preprocessing import StandardScaler
 
 
+CLASS_COLORS = ["#1f77b4", "#ff7f0e"]  # blue, orange
+
+
 class TargetSpaceVisualizer:
     """Visualize target distribution in 2D space using PCA or t-SNE."""
 
@@ -80,24 +83,24 @@ class TargetSpaceVisualizer:
 
         fig, ax = plt.subplots(figsize=figsize)
         unique_targets = np.unique(targets)
-        cmap = plt.cm.get_cmap("tab10", len(unique_targets))
 
         for idx, target in enumerate(unique_targets):
             mask = targets == target
+            color = CLASS_COLORS[idx % len(CLASS_COLORS)]
             ax.scatter(
                 embedding[mask, 0],
                 embedding[mask, 1],
                 alpha=alpha,
                 s=s,
-                color=cmap(idx),
+                color=color,
                 label=f"target={target}",
             )
 
         method_name = self.method.upper() if self.method == "pca" else "t-SNE"
-        ax.set_title(title or f"Target distribution in {method_name} space")
-        ax.set_xlabel("Component 1")
-        ax.set_ylabel("Component 2")
-        ax.legend(title="Classes")
+        ax.set_title(title or f"Распределние целевых меток в {method_name} пространстве")
+        ax.set_xlabel("Компонента 1")
+        ax.set_ylabel("Компонента 2")
+        ax.legend(title="Целевые метки")
         ax.grid(alpha=0.25)
         fig.tight_layout()
         return fig, ax
@@ -148,16 +151,16 @@ class TargetSpaceVisualizer:
             self._draw_decision_boundary(ax=ax, points_2d=projection, predicted_labels=preds)
 
         unique_targets = np.unique(targets)
-        cmap = plt.cm.get_cmap("tab10", len(unique_targets))
 
         for idx, target in enumerate(unique_targets):
             mask = targets == target
+            color = CLASS_COLORS[idx % len(CLASS_COLORS)]
             ax.scatter(
                 projection[mask, 0],
                 projection[mask, 1],
                 alpha=alpha,
                 s=s,
-                color=cmap(idx),
+                color=color,
                 label=f"target={target}",
             )
 
