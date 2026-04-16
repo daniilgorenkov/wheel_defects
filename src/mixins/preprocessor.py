@@ -21,7 +21,7 @@ class PreprocessorMixin(FileOperatorMixin):
 
     def create_target(self, fname: str):
         marker = fname.split("_")[-2]
-        if "17" in marker:
+        if "17" in marker or "12" in marker:
             return 1
         else:
             return 0
